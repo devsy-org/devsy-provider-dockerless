@@ -1,5 +1,8 @@
-env*
-devpod-provider-dockerless
-release
-rootlesskit*
-work
+/.idea
+/test
+.DS_Store
+/release
+/dist
+/bin
+provider
+devsy-provider-dockerless

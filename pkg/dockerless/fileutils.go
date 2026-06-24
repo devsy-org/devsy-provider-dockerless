@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"syscall"
 )
 
@@ -21,37 +20,10 @@ func UntarFile(workspaceId, path, target string) error {
 		return err
 	}
 
-	command := ""
-	var args []string
+	command, args := namespaceCommand(workspaceId)
+	args = append(args, "tar", "--exclude=dev/*", "-xpf", path, "-C", target)
 
-	if os.Getuid() > 0 {
-		command = "rootlesskit"
-		args = []string{
-			"--pidns",
-			"--cgroupns",
-			"--utsns",
-			"--ipcns",
-			"--net",
-			"host",
-			"--state-dir",
-			filepath.Join("/tmp", "dockerless", workspaceId),
-		}
-	} else {
-		command = "unshare"
-		args = []string{
-			"-m",
-			"-p",
-			"-u",
-			"-f",
-			"--mount-proc",
-		}
-	}
-
-	args = append(args, []string{
-		"tar", "--exclude=dev/*", "-xpf", path, "-C", target,
-	}...,
-	)
-
+	//nolint:gosec // command/args are built from constants and provider config
 	cmd := exec.Command(command, args...)
 
 	out, err := cmd.CombinedOutput()
@@ -64,6 +36,7 @@ func UntarFile(workspaceId, path, target string) error {
 
 // GetFileDigest will return the sha256sum of input file. Empty if error occurs.
 func GetFileDigest(path string) string {
+	//nolint:gosec // path is derived from provider config, not user input
 	file, err := os.Open(path)
 	if err != nil {
 		return ""
@@ -103,10 +76,10 @@ func Mount(src, dest string, mode uintptr) error {
 	}
 
 	if info.IsDir() {
-		_ = os.MkdirAll(dest, 0o755)
+		_ = os.MkdirAll(dest, 0o750)
 	} else {
+		//nolint:gosec // dest is a container mountpoint derived from provider config
 		file, _ := os.Create(dest)
-
 		defer func() { _ = file.Close() }()
 	}
 
@@ -120,6 +93,7 @@ func Mount(src, dest string, mode uintptr) error {
 // MountShm will mount a new shm tmpfs to dest path.
 // Said mount will be created with mode: noexec,nosuid,nodev,mode=1777,size=65536k.
 func MountShm(dest string) error {
+	//nolint:gosec // mountpoint is immediately overlaid by a tmpfs mount with mode=1777
 	_ = os.MkdirAll(dest, 0o777)
 
 	return syscall.Mount("shm",
@@ -132,6 +106,7 @@ func MountShm(dest string) error {
 // MountMqueue will mount a new mqueue tmpfs in dest path.
 // Said mount will be created with mode: noexec,nosuid,nodev.
 func MountMqueue(dest string) error {
+	//nolint:gosec // mountpoint is immediately overlaid by an mqueue mount
 	_ = os.MkdirAll(dest, 0o777)
 
 	return syscall.Mount("mqueue",
@@ -143,6 +118,7 @@ func MountMqueue(dest string) error {
 
 // MountTmpfs will mount a new tmpfs in dest path.
 func MountTmpfs(dest string) error {
+	//nolint:gosec // mountpoint is immediately overlaid by a tmpfs mount
 	_ = os.MkdirAll(dest, 0o777)
 
 	return syscall.Mount("tmpfs",
@@ -155,7 +131,7 @@ func MountTmpfs(dest string) error {
 // MountProc will mount a new procfs in dest path.
 // Said mount will be created with mode: noexec,nosuid,nodev.
 func MountProc(dest string) error {
-	_ = os.MkdirAll(dest, 0o755)
+	_ = os.MkdirAll(dest, 0o750)
 
 	return syscall.Mount("proc",
 		dest,
@@ -167,7 +143,7 @@ func MountProc(dest string) error {
 // MountDevPts will mount a new devpts in dest path.
 // Said mount will be created with mode: noexec,nosuid,newinstance,ptmxmode=0666,mode=0620.
 func MountDevPts(dest string) error {
-	_ = os.MkdirAll(dest, 0o755)
+	_ = os.MkdirAll(dest, 0o750)
 
 	return syscall.Mount("devpts",
 		dest,

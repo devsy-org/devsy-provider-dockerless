@@ -1,0 +1,27 @@
+version: 2
+project_name: devsy-provider-dockerless
+before:
+  hooks:
+    # Download the rootless networking helpers that get embedded into the
+    # provider binary. They are fetched for every supported linux arch.
+    - ./hack/download-binaries.sh
+builds:
+  - id: build
+    # The dockerless provider relies on linux-only syscalls (unshare,
+    # pivot_root, mount), so it is only built for linux.
+    goos: [linux]
+    goarch: [amd64, arm64]
+    tags:
+      - netgo
+      - osusergo
+    env:
+      - CGO_ENABLED=0
+    ldflags: -s -w -extldflags '-static' -X main.build={{ .Version }} -X main.commit={{ .Commit }} -X main.date={{ .Date }}
+    binary: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+archives:
+  - id: default
+    formats: ["binary"]
+    name_template: "{{ .Binary }}"

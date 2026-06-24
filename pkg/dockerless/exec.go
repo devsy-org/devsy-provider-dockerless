@@ -13,66 +13,77 @@ import (
 	"strings"
 )
 
-func (p *DockerlessProvider) ExecuteCommand(ctx context.Context, workspaceId, user, command string, stdin io.Reader, stdout, stderr io.Writer) error {
-	containerDIR := filepath.Join(p.Config.TargetDir, "rootfs", workspaceId)
+// ExecOptions bundles the parameters needed to execute a command inside a
+// running container.
+type ExecOptions struct {
+	WorkspaceID string
+	User        string
+	Command     string
+	Stdin       io.Reader
+	Stdout      io.Writer
+	Stderr      io.Writer
+}
 
-	ppid, err := GetPid(workspaceId)
+func (p *DockerlessProvider) ExecuteCommand(ctx context.Context, execOptions ExecOptions) error {
+	containerDIR := filepath.Join(p.Config.TargetDir, "rootfs", execOptions.WorkspaceID)
+
+	ppid, err := GetPid(execOptions.WorkspaceID)
 	if err != nil {
-		return fmt.Errorf("container %s is not running", workspaceId)
+		return fmt.Errorf("container %s is not running", execOptions.WorkspaceID)
 	}
 
-	// We want to enter the namespace of the PID1 inside the container
-	pid, err := exec.Command("pgrep", "-P", strconv.Itoa(ppid)).Output()
+	// We want to enter the namespace of the PID1 inside the container.
+	//nolint:gosec // ppid is an integer obtained from our own state dir
+	pidBytes, err := exec.Command("pgrep", "-P", strconv.Itoa(ppid)).Output()
 	if err != nil {
-		return fmt.Errorf("container %s is not running", workspaceId)
+		return fmt.Errorf("container %s is not running", execOptions.WorkspaceID)
 	}
 
-	pid = bytes.TrimSpace(pid)
+	pid := string(bytes.TrimSpace(pidBytes))
+	command := buildExecCommand(containerDIR, pid, execOptions.User, execOptions.Command)
 
-	nsenter := "nsenter"
+	//nolint:gosec // args are built from constants and our own container state
+	cmd := exec.Command("nsenter", command...)
+	cmd.Stdin = execOptions.Stdin
+	cmd.Stdout = execOptions.Stdout
+	cmd.Stderr = execOptions.Stderr
+
+	return cmd.Run()
+}
+
+// buildExecCommand assembles the nsenter arguments used to run command inside
+// the namespaces of the container's PID1.
+func buildExecCommand(containerDIR, pid, user, command string) []string {
 	args := []string{
 		"-m",
 		"-u",
 		"-i",
 		"-p",
-		"-r/proc/" + string(pid) + "/root",
-		"-w/proc/" + string(pid) + "/root",
+		"-r/proc/" + pid + "/root",
+		"-w/proc/" + pid + "/root",
 	}
 
-	_, err = os.Stat("/dev/net/tun")
-	if err == nil {
+	if _, err := os.Stat("/dev/net/tun"); err == nil {
 		args = append(args, "-n")
 	}
+
 	// user namespace only if we're rootless
-	if os.Getuid() > 0 {
-		args = append(args, "-U")
-		args = append(args, "--preserve-credentials")
+	if isRootless() {
+		args = append(args, "-U", "--preserve-credentials")
 	}
 
-	args = append(args, []string{
-		"-t",
-		string(pid),
-		"sh",
-		"-l",
-		"-c",
-	}...)
+	args = append(args, "-t", pid, "sh", "-l", "-c")
 
 	if user != "" && user != "0" && user != "root" {
 		uid := findUserPasswd(containerDIR, user)
 		command = "su -l " + uid + " -c " + command
 	}
 
-	args = append(args, command)
-
-	cmd := exec.Command(nsenter, args...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	return cmd.Run()
+	return append(args, command)
 }
 
 func findUserPasswd(path, user string) string {
+	//nolint:gosec // path is derived from provider config, not user input
 	passwd, err := os.ReadFile(filepath.Join(path, "/etc/passwd"))
 	if err != nil {
 		return "root"

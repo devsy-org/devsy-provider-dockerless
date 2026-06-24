@@ -4,22 +4,21 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/loft-sh/devpod-provider-dockerless/pkg/version"
-	"github.com/loft-sh/log"
+	"github.com/devsy-org/log"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
-// NewRootCmd returns a new root command
+// NewRootCmd returns a new root command.
 func NewRootCmd() *cobra.Command {
 	dockerlessCmd := &cobra.Command{
-		Use:           "devpod-provider-dockerless",
+		Use:           "devsy-provider-dockerless",
 		Short:         "Dockerless Provider commands",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 
 		PersistentPreRunE: func(cobraCmd *cobra.Command, args []string) error {
-			if os.Getenv("DEVPOD_DEBUG") == "true" {
+			if os.Getenv("DEVSY_DEBUG") == "true" {
 				log.Default.SetLevel(logrus.DebugLevel)
 			}
 
@@ -54,10 +53,9 @@ func Execute() {
 	}
 }
 
-// BuildRoot creates a new root command from the
+// BuildRoot creates a new root command from the provider.
 func BuildRoot() *cobra.Command {
 	rootCmd := NewRootCmd()
-	rootCmd.Version = version.Version
 
 	rootCmd.AddCommand(NewEnterCmd())
 	rootCmd.AddCommand(NewFindCmd())

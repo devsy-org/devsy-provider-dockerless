@@ -6,17 +6,17 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/loft-sh/devpod-provider-dockerless/pkg/dockerless"
-	"github.com/loft-sh/devpod-provider-dockerless/pkg/options"
-	"github.com/loft-sh/devpod/pkg/driver"
-	"github.com/loft-sh/log"
+	"github.com/devsy-org/devsy-provider-dockerless/pkg/dockerless"
+	"github.com/devsy-org/devsy-provider-dockerless/pkg/options"
+	"github.com/devsy-org/devsy/pkg/driver"
+	"github.com/devsy-org/log"
 	"github.com/spf13/cobra"
 )
 
-// RunCmd holds the cmd flags
+// RunCmd holds the cmd flags.
 type RunCmd struct{}
 
-// NewRunCmd defines a command
+// NewRunCmd defines a command.
 func NewRunCmd() *cobra.Command {
 	cmd := &RunCmd{}
 	runCmd := &cobra.Command{
@@ -35,7 +35,7 @@ func NewRunCmd() *cobra.Command {
 	return runCmd
 }
 
-// Run runs the command logic
+// Run runs the command logic.
 func (cmd *RunCmd) Run(ctx context.Context, options *options.Options, log log.Logger) error {
 	runOptions := &driver.RunOptions{}
 	err := json.Unmarshal([]byte(os.Getenv("DEVCONTAINER_RUN_OPTIONS")), runOptions)

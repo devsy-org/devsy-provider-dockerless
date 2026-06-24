@@ -9,69 +9,51 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/loft-sh/devpod/pkg/devcontainer/config"
-	"github.com/loft-sh/devpod/pkg/driver"
+	"github.com/devsy-org/devsy/pkg/devcontainer/config"
+	"github.com/devsy-org/devsy/pkg/driver"
 )
+
+// mountTypeBind is the only mount type supported by the dockerless driver.
+const mountTypeBind = "bind"
 
 func (p *DockerlessProvider) Enter(ctx context.Context, workspaceId string) error {
 	containerDIR := filepath.Join(p.Config.TargetDir, "rootfs", workspaceId)
 	statusDIR := filepath.Join(p.Config.TargetDir, "status", workspaceId)
 
-	runOptionsBytes, err := os.ReadFile(statusDIR + "/runOptions")
+	//nolint:gosec // path is derived from provider config, not user input
+	runOptionsBytes, err := os.ReadFile(filepath.Join(statusDIR, "runOptions"))
 	if err != nil {
 		return err
 	}
 
 	runOptions := driver.RunOptions{}
+	if err := json.Unmarshal(runOptionsBytes, &runOptions); err != nil {
+		return err
+	}
 
-	err = json.Unmarshal(runOptionsBytes, &runOptions)
+	if err := prepareMounts(containerDIR); err != nil {
+		return err
+	}
+
+	mounts, err := collectMounts(&runOptions)
 	if err != nil {
 		return err
 	}
 
-	err = prepareMounts(containerDIR)
-	if err != nil {
+	if err := performMounts(mounts, containerDIR); err != nil {
 		return err
 	}
 
-	mounts := []*config.Mount{
-		{
-			Source: "/etc/resolv.conf",
-			Target: "/etc/resolv.conf",
-			Type:   "bind",
-		},
-		{
-			Source: "/etc/hosts",
-			Target: "/etc/hosts",
-			Type:   "bind",
-		},
-	}
-	mount := runOptions.WorkspaceMount
-
-	if mount != nil {
-		if mount.Target == "" {
-			return fmt.Errorf("workspace mount target is empty")
-		}
-		mounts = append(mounts, mount)
-	}
-
-	mounts = append(mounts, runOptions.Mounts...)
-	err = performMounts(mounts, containerDIR)
-	if err != nil {
-		return err
-	}
-
-	err = syscall.Chdir(containerDIR)
-	if err != nil {
+	if err := syscall.Chdir(containerDIR); err != nil {
 		return err
 	}
 
 	// then we set up the hostname.
-	err = syscall.Sethostname([]byte(workspaceId))
-	if err != nil {
+	if err := syscall.Sethostname([]byte(workspaceId)); err != nil {
 		return fmt.Errorf("error setting hostname for namespace: %w", err)
 	}
 
+	//nolint:gosec // entrypoint/cmd come from the container image config
 	cmd := exec.Command(runOptions.Entrypoint, runOptions.Cmd...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -84,125 +66,90 @@ func (p *DockerlessProvider) Enter(ctx context.Context, workspaceId string) erro
 	return cmd.Run()
 }
 
+// collectMounts assembles the list of mounts to apply inside the container:
+// the default resolv.conf/hosts binds, the workspace mount and any extra mounts.
+func collectMounts(runOptions *driver.RunOptions) ([]*config.Mount, error) {
+	mounts := []*config.Mount{
+		{
+			Source: "/etc/resolv.conf",
+			Target: "/etc/resolv.conf",
+			Type:   mountTypeBind,
+		},
+		{
+			Source: "/etc/hosts",
+			Target: "/etc/hosts",
+			Type:   mountTypeBind,
+		},
+	}
+
+	if mount := runOptions.WorkspaceMount; mount != nil {
+		if mount.Target == "" {
+			return nil, fmt.Errorf("workspace mount target is empty")
+		}
+		mounts = append(mounts, mount)
+	}
+
+	return append(mounts, runOptions.Mounts...), nil
+}
+
 func prepareMounts(rootfs string) error {
-	err := MountBind("/proc", filepath.Join(rootfs, "/proc"))
-	if err != nil {
-		return err
-	}
-	err = MountTmpfs(filepath.Join(rootfs, "/tmp"))
-	if err != nil {
+	if err := MountBind("/proc", filepath.Join(rootfs, "/proc")); err != nil {
 		return err
 	}
 
-	err = MountBind("/dev", filepath.Join(rootfs, "/dev"))
-	if err != nil {
+	if err := MountTmpfs(filepath.Join(rootfs, "/tmp")); err != nil {
 		return err
 	}
 
-	err = MountShm(filepath.Join(rootfs, "/dev/shm"))
-	if err != nil {
+	if err := MountBind("/dev", filepath.Join(rootfs, "/dev")); err != nil {
 		return err
 	}
 
-	err = MountDevPts(filepath.Join(rootfs, "/dev/pts"))
-	if err != nil {
+	if err := MountShm(filepath.Join(rootfs, "/dev/shm")); err != nil {
 		return err
 	}
 
-	err = MountBind(filepath.Join(rootfs, "dev/pts/ptmx"), filepath.Join(rootfs, "dev/ptmx"))
-	if err != nil {
+	if err := MountDevPts(filepath.Join(rootfs, "/dev/pts")); err != nil {
 		return err
 	}
 
-	return nil
+	return MountBind(filepath.Join(rootfs, "dev/pts/ptmx"), filepath.Join(rootfs, "dev/ptmx"))
 }
 
 func performMounts(mounts []*config.Mount, rootfs string) error {
 	for _, mount := range mounts {
-		if mount.Type == "bind" {
-			// bind mount
-			info, err := os.Stat(mount.Source)
-			if err != nil {
-				return err
-			}
+		if mount.Type != mountTypeBind {
+			return fmt.Errorf(
+				"unsupported mount type '%s' in mount '%s'",
+				mount.Type,
+				mount.String(),
+			)
+		}
 
-			if info.IsDir() {
-				_ = os.MkdirAll(filepath.Join(rootfs, mount.Target), 0o755)
-			} else {
-				file, _ := os.Create(filepath.Join(rootfs, mount.Target))
-
-				defer func() { _ = file.Close() }()
-			}
-
-			err = MountBind(mount.Source,
-				filepath.Join(rootfs, mount.Target))
-
-			if err != nil {
-				return err
-			}
-		} else {
-			return fmt.Errorf("unsupported mount type '%s' in mount '%s'", mount.Type, mount.String())
+		if err := performBindMount(mount, rootfs); err != nil {
+			return err
 		}
 	}
 
 	return nil
 }
 
-// PivotRoot will perform pivot root syscall into path.
-func PivotRoot(path string) error {
-	err := syscall.Mount(path, path, "", syscall.MS_BIND|syscall.MS_REC, "")
+// performBindMount prepares the target path and bind-mounts a single mount into
+// the container rootfs.
+func performBindMount(mount *config.Mount, rootfs string) error {
+	info, err := os.Stat(mount.Source)
 	if err != nil {
-		return fmt.Errorf("error setting private mount: %s. %v", path, err.Error())
+		return err
 	}
 
-	err = syscall.Mount("", path, "", syscall.MS_PRIVATE|syscall.MS_REC, "")
-	if err != nil {
-		return fmt.Errorf("error setting private mount: %s. %v", path, err.Error())
+	target := filepath.Join(rootfs, mount.Target)
+	if info.IsDir() {
+		_ = os.MkdirAll(target, 0o750)
+	} else {
+		//nolint:gosec // target is derived from provider config, not user input
+		file, _ := os.Create(target)
+		defer func() { _ = file.Close() }()
 	}
 
-	err = syscall.Mount("", "/", "", syscall.MS_PRIVATE|syscall.MS_REC, "")
-	if err != nil {
-		return fmt.Errorf("error setting private mount: %s. %v", path, err.Error())
-	}
-
-	// first we set up pivotroot.
-	if !Exist(path) {
-		return fmt.Errorf("pivotroot: rootfs %s does not exist", path)
-	}
-
-	tmpDir := filepath.Join(path, "/")
-	pivotDir := filepath.Join(tmpDir, ".pivot_root")
-
-	_ = os.Remove(tmpDir)
-	_ = os.Remove(pivotDir)
-
-	err = os.MkdirAll(tmpDir, 0o755)
-	if err != nil {
-		return fmt.Errorf("pivotroot: can't create tmp dir %s, error %w", tmpDir, err)
-	}
-
-	err = os.Mkdir(pivotDir, os.ModePerm)
-	if err != nil {
-		return fmt.Errorf("pivotroot: can't create pivot_root dir %s, error %w", pivotDir, err)
-	}
-
-	err = syscall.PivotRoot(path, pivotDir)
-	if err != nil {
-		return fmt.Errorf("pivotroot: %w", err)
-	}
-
-	// path to pivot dir now changed, update
-	pivotDir = filepath.Join("/", filepath.Base(pivotDir))
-
-	err = syscall.Unmount(pivotDir, syscall.MNT_DETACH)
-	if err != nil {
-		return fmt.Errorf("unmount pivot_root dir %w", err)
-	}
-
-	err = os.Remove(pivotDir)
-	if err != nil {
-		return fmt.Errorf("cleanup pivot_root dir %w", err)
-	}
-
-	return nil
+	return MountBind(mount.Source, target)
 }

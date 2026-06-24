@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devsy-org/devsy/pkg/devcontainer/config"
+	"github.com/devsy-org/devsy/pkg/driver"
 	"github.com/google/go-containerregistry/pkg/legacy"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/loft-sh/devpod/pkg/devcontainer/config"
-	"github.com/loft-sh/devpod/pkg/driver"
 )
 
 // CreateRootfs will generate a chrootable rootfs from input oci image reference, with input name and config.
@@ -21,60 +21,69 @@ import (
 // a valid rootfs.
 // Untarring process will follow the keep-id option if specified in order to ensure no permission problems.
 // Generated config will be saved inside the container's dir. This will NOT be an oci-compatible container config.
-func (p *DockerlessProvider) Create(ctx context.Context, workspaceId string, runOptions *driver.RunOptions) error {
-	image := runOptions.Image
-
-	ref, err := name.ParseReference(image)
-	if err == nil {
-		image = ref.Name()
-	}
+func (p *DockerlessProvider) Create(
+	ctx context.Context,
+	workspaceId string,
+	runOptions *driver.RunOptions,
+) error {
+	image := imageName(runOptions.Image)
 
 	imageDir := filepath.Join(p.Config.TargetDir, "images", image)
 	containerDIR := filepath.Join(p.Config.TargetDir, "rootfs", workspaceId)
 	statusDIR := filepath.Join(p.Config.TargetDir, "status", workspaceId)
-
-	// save the config to file
 	configPath := filepath.Join(statusDIR, "runOptions")
 
 	// if the container already exists, exit
-	_, err = os.Stat(configPath)
-	if err == nil {
+	if _, err := os.Stat(configPath); err == nil {
 		return nil
 	}
 
-	err = os.MkdirAll(containerDIR, os.ModePerm)
+	if err := os.MkdirAll(containerDIR, 0o750); err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(statusDIR, 0o750); err != nil {
+		return err
+	}
+
+	layerConfig, err := p.unpackLayers(workspaceId, imageDir, containerDIR)
 	if err != nil {
 		return err
 	}
 
-	err = os.MkdirAll(statusDIR, os.ModePerm)
-	if err != nil {
+	p.Log.Debugf("preparing runoptions")
+	mergeRunOptions(runOptions, layerConfig)
+
+	if err := writeJSON(configPath, runOptions); err != nil {
 		return err
 	}
 
-	// get manifest
-	manifestFile, err := os.ReadFile(filepath.Join(imageDir, "manifest.json"))
-	if err != nil {
+	containerDetails := initializeContainerDetails(workspaceId, runOptions)
+	if err := writeJSON(
+		filepath.Join(statusDIR, "containerDetails"),
+		containerDetails,
+	); err != nil {
 		return err
 	}
 
-	var manifest v1.Manifest
+	p.Log.Info("done")
 
-	err = json.Unmarshal(manifestFile, &manifest)
+	return nil
+}
+
+// unpackLayers reads the image manifest and config, unpacks every layer into
+// the container rootfs and returns the parsed layer config.
+func (p *DockerlessProvider) unpackLayers(
+	workspaceId, imageDir, containerDIR string,
+) (*legacy.LayerConfigFile, error) {
+	manifest, err := readManifest(imageDir)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	configFile, err := os.ReadFile(filepath.Join(imageDir, "config.json"))
+	layerConfig, err := readLayerConfig(imageDir)
 	if err != nil {
-		return err
-	}
-
-	var layerConfig legacy.LayerConfigFile
-
-	err = json.Unmarshal(configFile, &layerConfig)
-	if err != nil {
-		return err
+		return nil, err
 	}
 
 	p.Log.Info("preparing container rootfs")
@@ -84,25 +93,72 @@ func (p *DockerlessProvider) Create(ctx context.Context, workspaceId string, run
 
 		p.Log.Debugf("unpacking layer %d of %d", index+1, len(manifest.Layers))
 
-		err = UntarFile(
+		if err := UntarFile(
 			workspaceId,
 			filepath.Join(imageDir, layerDigest),
 			containerDIR,
-		)
-		if err != nil {
-			return err
+		); err != nil {
+			return nil, err
 		}
 	}
 
 	p.Log.Info("done")
 
-	p.Log.Debugf("preparing runoptions")
+	return layerConfig, nil
+}
 
+// imageName normalizes an image reference, falling back to the raw value when
+// it cannot be parsed.
+func imageName(image string) string {
+	if ref, err := name.ParseReference(image); err == nil {
+		return ref.Name()
+	}
+
+	return image
+}
+
+func readManifest(imageDir string) (*v1.Manifest, error) {
+	path := filepath.Join(imageDir, "manifest.json")
+
+	//nolint:gosec // path is derived from provider config, not user input
+	manifestFile, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var manifest v1.Manifest
+	if err := json.Unmarshal(manifestFile, &manifest); err != nil {
+		return nil, err
+	}
+
+	return &manifest, nil
+}
+
+func readLayerConfig(imageDir string) (*legacy.LayerConfigFile, error) {
+	path := filepath.Join(imageDir, "config.json")
+
+	//nolint:gosec // path is derived from provider config, not user input
+	configFile, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var layerConfig legacy.LayerConfigFile
+	if err := json.Unmarshal(configFile, &layerConfig); err != nil {
+		return nil, err
+	}
+
+	return &layerConfig, nil
+}
+
+// mergeRunOptions fills in the run options with defaults derived from the
+// image's layer config (environment, entrypoint and command).
+func mergeRunOptions(runOptions *driver.RunOptions, layerConfig *legacy.LayerConfigFile) {
 	if runOptions.Env == nil {
 		runOptions.Env = make(map[string]string)
 	}
 
-	// Merge container's default environment with the custom one
+	// Merge container's default environment with the custom one.
 	containerEnv := config.ListToObject(layerConfig.Config.Env)
 	for k, v := range containerEnv {
 		if runOptions.Env[k] == "" {
@@ -110,45 +166,32 @@ func (p *DockerlessProvider) Create(ctx context.Context, workspaceId string, run
 		}
 	}
 
-	// fallback TERM to xterm if not defined
+	// fallback TERM to xterm if not defined.
 	if runOptions.Env["TERM"] == "" {
 		runOptions.Env["TERM"] = "xterm"
 	}
 
-	// set entrypoint if empty
+	// set entrypoint if empty.
 	if runOptions.Entrypoint == "" {
 		runOptions.Entrypoint = layerConfig.Config.Cmd[0]
 		runOptions.Cmd = layerConfig.Config.Cmd[1:]
 	}
-
-	file, err := json.MarshalIndent(runOptions, "", " ")
-	if err != nil {
-		return err
-	}
-
-	err = os.WriteFile(configPath, file, 0o644)
-	if err != nil {
-		return err
-	}
-
-	containerDetails := initializeContainerDetails(ctx, workspaceId, runOptions)
-	detailsPath := filepath.Join(statusDIR, "containerDetails")
-	file, err = json.MarshalIndent(containerDetails, "", " ")
-	if err != nil {
-		return err
-	}
-
-	err = os.WriteFile(detailsPath, file, 0o644)
-	if err != nil {
-		return err
-	}
-
-	p.Log.Info("done")
-
-	return nil
 }
 
-func initializeContainerDetails(ctx context.Context, workspaceId string, runOptions *driver.RunOptions) *config.ContainerDetails {
+// writeJSON marshals v as indented JSON and writes it to path.
+func writeJSON(path string, v any) error {
+	file, err := json.MarshalIndent(v, "", " ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, file, 0o600)
+}
+
+func initializeContainerDetails(
+	workspaceId string,
+	runOptions *driver.RunOptions,
+) *config.ContainerDetails {
 	return &config.ContainerDetails{
 		ID:      workspaceId,
 		Created: time.Now().String(),
