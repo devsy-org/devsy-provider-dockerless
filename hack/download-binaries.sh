@@ -23,7 +23,10 @@ for goarch in "${!ARCHES[@]}"; do
     rootlesskit_out="${BIN_DIR}/rootlesskit-linux-${goarch}"
     slirp4netns_out="${BIN_DIR}/slirp4netns-linux-${goarch}"
 
-    if [[ ! -f "${rootlesskit_out}" ]]; then
+    # -s: only download when the placeholder is empty (or missing), so a real
+    # binary from a previous run is reused but the tracked 0-byte placeholder
+    # gets replaced.
+    if [[ ! -s "${rootlesskit_out}" ]]; then
         echo "Downloading rootlesskit ${ROOTLESSKIT_VERSION} (${goarch})"
         tmp="$(mktemp -d)"
         curl -fsSL \
@@ -35,7 +38,7 @@ for goarch in "${!ARCHES[@]}"; do
         rm -rf "${tmp}"
     fi
 
-    if [[ ! -f "${slirp4netns_out}" ]]; then
+    if [[ ! -s "${slirp4netns_out}" ]]; then
         echo "Downloading slirp4netns ${SLIRP4NETNS_VERSION} (${goarch})"
         curl -fsSL \
             "https://github.com/rootless-containers/slirp4netns/releases/download/v${SLIRP4NETNS_VERSION}/slirp4netns-${upstream}" \
