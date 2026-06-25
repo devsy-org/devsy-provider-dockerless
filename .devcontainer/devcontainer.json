@@ -1,0 +1,6 @@
+{
+  "image": "mcr.microsoft.com/devcontainers/go:latest",
+  "features": {
+    "ghcr.io/devcontainers-extra/features/prek:1": {}
+  }
+}
