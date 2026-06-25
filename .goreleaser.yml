@@ -3,8 +3,9 @@ project_name: devsy-provider-dockerless
 before:
   hooks:
     # Download the rootless networking helpers that get embedded into the
-    # provider binary. They are fetched for every supported linux arch.
-    - ./hack/download-binaries.sh
+    # provider binary. They are fetched (and checksum-verified) for every
+    # supported linux arch.
+    - go run ./hack/download-binaries
 builds:
   - id: build
     # The dockerless provider relies on linux-only syscalls (unshare,

@@ -1,6 +1,10 @@
 version: "3"
 
 tasks:
+  download:binaries:
+    desc: Download and checksum-verify the embedded rootless helpers
+    cmd: go run ./hack/download-binaries
+
   build:cli:
     desc: Build the cli
     cmds:
