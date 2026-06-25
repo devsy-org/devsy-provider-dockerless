@@ -9,7 +9,6 @@ import (
 	"github.com/devsy-org/devsy-provider-dockerless/pkg/dockerless"
 	"github.com/devsy-org/devsy-provider-dockerless/pkg/options"
 	"github.com/devsy-org/devsy/pkg/driver"
-	"github.com/devsy-org/log"
 	"github.com/spf13/cobra"
 )
 
@@ -28,7 +27,7 @@ func NewRunCmd() *cobra.Command {
 				return err
 			}
 
-			return cmd.Run(context.Background(), options, log.Default)
+			return cmd.Run(context.Background(), options)
 		},
 	}
 
@@ -36,14 +35,14 @@ func NewRunCmd() *cobra.Command {
 }
 
 // Run runs the command logic.
-func (cmd *RunCmd) Run(ctx context.Context, options *options.Options, log log.Logger) error {
+func (cmd *RunCmd) Run(ctx context.Context, options *options.Options) error {
 	runOptions := &driver.RunOptions{}
 	err := json.Unmarshal([]byte(os.Getenv("DEVCONTAINER_RUN_OPTIONS")), runOptions)
 	if err != nil {
 		return fmt.Errorf("unmarshal run options: %w", err)
 	}
 
-	dockerlessProvider, err := dockerless.NewProvider(ctx, options, log)
+	dockerlessProvider, err := dockerless.NewProvider(ctx, options)
 	if err != nil {
 		return err
 	}

@@ -4,8 +4,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/devsy-org/log"
-	"github.com/sirupsen/logrus"
+	"github.com/devsy-org/devsy/pkg/log"
 	"github.com/spf13/cobra"
 )
 
@@ -18,11 +17,11 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 
 		PersistentPreRunE: func(cobraCmd *cobra.Command, args []string) error {
+			cfg := log.Config{Verbosity: 1}
 			if os.Getenv("DEVSY_DEBUG") == "true" {
-				log.Default.SetLevel(logrus.DebugLevel)
+				cfg.Debug = true
 			}
-
-			log.Default.MakeRaw()
+			log.Init(cfg)
 
 			return nil
 		},
@@ -44,12 +43,12 @@ func Execute() {
 		exitErr, ok := err.(*exec.ExitError)
 		if ok {
 			if len(exitErr.Stderr) > 0 {
-				log.Default.ErrorStreamOnly().Error(string(exitErr.Stderr))
+				log.Error(string(exitErr.Stderr))
 			}
 
 			os.Exit(exitErr.ExitCode())
 		}
-		log.Default.Fatal(err)
+		log.Fatal(err)
 	}
 }
 

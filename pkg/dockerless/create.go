@@ -10,6 +10,7 @@ import (
 
 	"github.com/devsy-org/devsy/pkg/devcontainer/config"
 	"github.com/devsy-org/devsy/pkg/driver"
+	"github.com/devsy-org/devsy/pkg/log"
 	"github.com/google/go-containerregistry/pkg/legacy"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -51,7 +52,7 @@ func (p *DockerlessProvider) Create(
 		return err
 	}
 
-	p.Log.Debugf("preparing runoptions")
+	log.Debugf("preparing runoptions")
 	mergeRunOptions(runOptions, layerConfig)
 
 	if err := writeJSON(configPath, runOptions); err != nil {
@@ -66,7 +67,7 @@ func (p *DockerlessProvider) Create(
 		return err
 	}
 
-	p.Log.Info("done")
+	log.Info("done")
 
 	return nil
 }
@@ -86,12 +87,12 @@ func (p *DockerlessProvider) unpackLayers(
 		return nil, err
 	}
 
-	p.Log.Info("preparing container rootfs")
+	log.Info("preparing container rootfs")
 
 	for index, layer := range manifest.Layers {
 		layerDigest := strings.Split(layer.Digest.String(), ":")[1] + ".tar.gz"
 
-		p.Log.Debugf("unpacking layer %d of %d", index+1, len(manifest.Layers))
+		log.Debugf("unpacking layer %d of %d", index+1, len(manifest.Layers))
 
 		if err := UntarFile(
 			workspaceId,
@@ -102,7 +103,7 @@ func (p *DockerlessProvider) unpackLayers(
 		}
 	}
 
-	p.Log.Info("done")
+	log.Info("done")
 
 	return layerConfig, nil
 }
