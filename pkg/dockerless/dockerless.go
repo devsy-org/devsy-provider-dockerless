@@ -9,12 +9,21 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/loft-sh/devpod-provider-dockerless/pkg/options"
-	"github.com/loft-sh/devpod/pkg/devcontainer/config"
-	"github.com/loft-sh/log"
+	"github.com/devsy-org/devsy-provider-dockerless/pkg/options"
+	"github.com/devsy-org/devsy/pkg/devcontainer/config"
+	"github.com/devsy-org/log"
 )
 
-func NewProvider(ctx context.Context, options *options.Options, logs log.Logger) (*DockerlessProvider, error) {
+type DockerlessProvider struct {
+	Config *options.Options
+	Log    log.Logger
+}
+
+func NewProvider(
+	ctx context.Context,
+	options *options.Options,
+	logs log.Logger,
+) (*DockerlessProvider, error) {
 	// create provider
 	provider := &DockerlessProvider{
 		Config: options,
@@ -24,42 +33,36 @@ func NewProvider(ctx context.Context, options *options.Options, logs log.Logger)
 	return provider, nil
 }
 
-type DockerlessProvider struct {
-	Config *options.Options
-	Log    log.Logger
-}
-
-func (p *DockerlessProvider) Find(ctx context.Context, workspaceId string) (*config.ContainerDetails, error) {
+func (p *DockerlessProvider) Find(
+	ctx context.Context,
+	workspaceId string,
+) (*config.ContainerDetails, error) {
 	statusDIR := filepath.Join(p.Config.TargetDir, "status", workspaceId)
+	detailsPath := filepath.Join(statusDIR, "containerDetails")
 
 	// check if the rootfs exists
-	_, err := os.Stat(statusDIR)
-	if err != nil {
+	if _, err := os.Stat(statusDIR); err != nil {
 		return nil, fmt.Errorf("container %s does not exist", workspaceId)
 	}
 
-	// check if the containerDetails exits
-	_, err = os.Stat(statusDIR + "/containerDetails")
-	if err != nil {
+	// check if the containerDetails exists
+	if _, err := os.Stat(detailsPath); err != nil {
 		return nil, fmt.Errorf("container %s does not exist", workspaceId)
 	}
 
-	containerDetailsBytes, err := os.ReadFile(statusDIR + "/containerDetails")
+	//nolint:gosec // path is derived from provider config, not user input
+	containerDetailsBytes, err := os.ReadFile(detailsPath)
 	if err != nil {
 		return nil, err
 	}
 
 	containerDetails := config.ContainerDetails{}
-
-	err = json.Unmarshal(containerDetailsBytes, &containerDetails)
-	if err != nil {
+	if err := json.Unmarshal(containerDetailsBytes, &containerDetails); err != nil {
 		return nil, err
 	}
 
 	status := "stopped"
-
-	pid, err := GetPid(workspaceId)
-	if err == nil && pid > 1 {
+	if pid, err := GetPid(workspaceId); err == nil && pid > 1 {
 		// file exists, pid is running
 		status = "running"
 	}
@@ -79,7 +82,9 @@ func (p *DockerlessProvider) Stop(ctx context.Context, workspaceId string) error
 
 	p.Log.Debugf("found parent process: %d", pid)
 
-	return exec.Command("kill", "-9", strconv.Itoa(pid)).Run()
+	//nolint:gosec // pid is an integer obtained from our own state dir
+	cmd := exec.Command("kill", "-9", strconv.Itoa(pid))
+	return cmd.Run()
 }
 
 func (p *DockerlessProvider) Delete(ctx context.Context, workspaceId string) error {
@@ -90,41 +95,14 @@ func (p *DockerlessProvider) Delete(ctx context.Context, workspaceId string) err
 	containerDIR := filepath.Join(p.Config.TargetDir, "rootfs", workspaceId)
 	statusDIR := filepath.Join(p.Config.TargetDir, "status", workspaceId)
 
-	err := os.RemoveAll(statusDIR)
-	if err != nil {
+	if err := os.RemoveAll(statusDIR); err != nil {
 		return err
 	}
 
-	command := ""
-	var args []string
+	command, args := namespaceCommand(workspaceId)
+	args = append(args, "rm", "-rf", containerDIR)
 
-	if os.Getuid() > 0 {
-		command = "rootlesskit"
-		args = []string{
-			"--pidns",
-			"--cgroupns",
-			"--utsns",
-			"--ipcns",
-			"--net",
-			"host",
-			"--state-dir",
-			filepath.Join("/tmp", "dockerless", workspaceId),
-		}
-	} else {
-		command = "unshare"
-		args = []string{
-			"-m",
-			"-p",
-			"-u",
-			"-f",
-			"--mount-proc",
-		}
-	}
-
-	args = append(args, []string{
-		"rm", "-rf", containerDIR,
-	}...)
-
+	//nolint:gosec // command/args are built from constants and provider config
 	cmd := exec.Command(command, args...)
 	return cmd.Run()
 }

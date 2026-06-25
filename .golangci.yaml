@@ -1,53 +1,42 @@
-linters:
-  # We want to gradually introduce new linters to the project
-  disable-all: true
+version: "2"
+run:
+  timeout: 5m
+  concurrency: 8
+formatters:
   enable:
-    - asasalint
-    - asciicheck
-    - bidichk
-    - decorder
-    - durationcheck
-    - errcheck
-    - errname
-    - errorlint
-    - exhaustive
-    - exportloopref
-    - ginkgolinter
-    - gocheckcompilerdirectives
+    - gci
+    - gofumpt
     - goimports
-    - gosimple
-    - govet
-    - grouper
-    - importas
-    - ineffassign
-    - makezero
+    - golines
+linters:
+  enable:
+    - cyclop
+    - decorder
+    - dupl
+    - errcheck
+    - fatcontext
+    - forbidigo
+    - funcorder
+    - funlen
+    - goconst
+    - gocritic
+    - godot
+    - gosec
+    - lll
     - misspell
-    - nakedret
-    - promlinter
+    - modernize
+    - nestif
+    - revive
     - staticcheck
-    - stylecheck
-    - typecheck
-    - tagalign
-    - unconvert
+    - unparam
     - unused
     - whitespace
-
-    # - dupl
-    # - cyclop
-    # - funlen
-
-linters-settings:
-  stylecheck:
-    checks: ["*", "-ST1003"]
-  exhaustive:
-    check:
-      - switch
-      - map
-    ignore-enum-types: "ResourceName|FileMode|ProgrammingLanguage"
-    # - cyclop
-    # - funlen
-issues:
-  # Maximum issues count per one linter. Set to 0 to disable. Default is 50.
-  max-issues-per-linter: 0
-  # Maximum count of issues with the same text. Set to 0 to disable. Default is 3.
-  max-same-issues: 0
+  settings:
+    cyclop:
+      max-complexity: 8
+    revive:
+      rules:
+        - name: argument-limit
+          arguments: [4]
+        - name: function-result-limit
+          arguments: [3]

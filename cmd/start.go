@@ -3,16 +3,16 @@ package cmd
 import (
 	"context"
 
-	"github.com/loft-sh/devpod-provider-dockerless/pkg/dockerless"
-	"github.com/loft-sh/devpod-provider-dockerless/pkg/options"
-	"github.com/loft-sh/log"
+	"github.com/devsy-org/devsy-provider-dockerless/pkg/dockerless"
+	"github.com/devsy-org/devsy-provider-dockerless/pkg/options"
+	"github.com/devsy-org/log"
 	"github.com/spf13/cobra"
 )
 
-// StartCmd holds the cmd flags
+// StartCmd holds the cmd flags.
 type StartCmd struct{}
 
-// NewStartCmd defines a command
+// NewStartCmd defines a command.
 func NewStartCmd() *cobra.Command {
 	cmd := &StartCmd{}
 	startCmd := &cobra.Command{
@@ -31,7 +31,7 @@ func NewStartCmd() *cobra.Command {
 	return startCmd
 }
 
-// Run runs the command logic
+// Run runs the command logic.
 func (cmd *StartCmd) Run(ctx context.Context, options *options.Options, log log.Logger) error {
 	dockerlessProvider, err := dockerless.NewProvider(ctx, options, log)
 	if err != nil {

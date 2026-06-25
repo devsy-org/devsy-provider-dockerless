@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/devsy-org/devsy/pkg/driver"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/loft-sh/devpod/pkg/driver"
 )
 
 // Pull will pull a given image and save it to ImageDir.
@@ -32,8 +32,7 @@ func (p *DockerlessProvider) Pull(ctx context.Context, runOptions *driver.RunOpt
 
 	p.Log.Infof("downloading %s", ref.Name())
 	// if we already downloaded the image, exit
-	_, err = os.Stat(filepath.Join(targetDIR, "manifest.json"))
-	if err == nil {
+	if _, err := os.Stat(filepath.Join(targetDIR, "manifest.json")); err == nil {
 		p.Log.Infof("image %s already found", ref.Name())
 
 		return nil
@@ -47,24 +46,31 @@ func (p *DockerlessProvider) Pull(ctx context.Context, runOptions *driver.RunOpt
 		return err
 	}
 
+	if err := p.downloadLayers(targetDIR, imageManifest); err != nil {
+		return err
+	}
+
+	return p.saveImageMetadata(targetDIR, image, imageManifest)
+}
+
+// downloadLayers downloads every layer of the image into targetDIR and removes
+// any stale files left over from previous downloads.
+func (p *DockerlessProvider) downloadLayers(targetDIR string, imageManifest v1.Image) error {
 	p.Log.Debugf("preparing to get layers")
-	// We get the layers
 	layers, err := imageManifest.Layers()
 	if err != nil {
 		return err
 	}
 
-	// Prepare the image path
+	// Prepare the image path.
 	if !Exist(targetDIR) {
-		err := os.MkdirAll(targetDIR, os.ModePerm)
-		if err != nil {
+		if err := os.MkdirAll(targetDIR, 0o750); err != nil {
 			return err
 		}
 	}
 
 	p.Log.Infof("downloading layers")
 	keepFiles := []string{}
-	// Now we download the layers
 	for index, layer := range layers {
 		p.Log.Infof("downloading layer %d of %d", index+1, len(layers))
 
@@ -76,24 +82,34 @@ func (p *DockerlessProvider) Pull(ctx context.Context, runOptions *driver.RunOpt
 		keepFiles = append(keepFiles, fileName)
 	}
 
+	return cleanupImageDir(targetDIR, keepFiles)
+}
+
+// cleanupImageDir removes every file in targetDIR that is not part of keepFiles.
+func cleanupImageDir(targetDIR string, keepFiles []string) error {
 	fileList, err := os.ReadDir(targetDIR)
 	if err != nil {
 		return err
 	}
 
-	p.Log.Debugf("cleaning up image dir")
+	keep := strings.Join(keepFiles, ":")
 	for _, file := range fileList {
-		if !strings.Contains(
-			strings.Join(keepFiles, ":"),
-			filepath.Base(file.Name()),
-		) {
-			err = os.Remove(filepath.Join(targetDIR, file.Name()))
-			if err != nil {
+		if !strings.Contains(keep, filepath.Base(file.Name())) {
+			if err := os.Remove(filepath.Join(targetDIR, file.Name())); err != nil {
 				return err
 			}
 		}
 	}
 
+	return nil
+}
+
+// saveImageMetadata persists the manifest, config and fully qualified image
+// name for later use.
+func (p *DockerlessProvider) saveImageMetadata(
+	targetDIR, image string,
+	imageManifest v1.Image,
+) error {
 	p.Log.Debugf("saving manifest.json")
 	// we save the manifest.json for later use. This contains
 	// the information on how the layers are ordered and
@@ -103,8 +119,11 @@ func (p *DockerlessProvider) Pull(ctx context.Context, runOptions *driver.RunOpt
 		return err
 	}
 
-	err = os.WriteFile(filepath.Join(targetDIR, "manifest.json"), rawManifest, 0o644)
-	if err != nil {
+	if err := os.WriteFile(
+		filepath.Join(targetDIR, "manifest.json"),
+		rawManifest,
+		0o600,
+	); err != nil {
 		return err
 	}
 
@@ -116,23 +135,17 @@ func (p *DockerlessProvider) Pull(ctx context.Context, runOptions *driver.RunOpt
 		return err
 	}
 
-	err = os.WriteFile(filepath.Join(targetDIR, "config.json"), rawConfig, 0o644)
-	if err != nil {
+	if err := os.WriteFile(filepath.Join(targetDIR, "config.json"), rawConfig, 0o600); err != nil {
 		return err
 	}
 
 	p.Log.Debugf("saving image info")
-	// We also save the fully qualified name to retrieve it later
-	err = os.WriteFile(filepath.Join(targetDIR, "image_name"), []byte(image), 0o644)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	// We also save the fully qualified name to retrieve it later.
+	return os.WriteFile(filepath.Join(targetDIR, "image_name"), []byte(image), 0o600)
 }
 
 // downloadLayer will download input layer into targetDIR.
-// downloadLayer will first searc hexisting images inside the ImageDir in order
+// downloadLayer will first search existing images inside the ImageDir in order
 // to find matching layers, and hardlink them in order to save disk space.
 //
 // Each layer download is verified in order to ensure no corrupted downloads occur.
@@ -144,8 +157,7 @@ func downloadLayer(targetDIR string, layer v1.Layer) (string, error) {
 	// always cleanup before
 	_ = os.RemoveAll(tmpdir)
 
-	err := os.MkdirAll(tmpdir, 0o750)
-	if err != nil {
+	if err := os.MkdirAll(tmpdir, 0o750); err != nil {
 		return "", err
 	}
 
@@ -153,51 +165,72 @@ func downloadLayer(targetDIR string, layer v1.Layer) (string, error) {
 	defer func() { _ = os.RemoveAll(tmpdir) }()
 
 	layerDigest, _ := layer.Digest()
-
 	layerFileName := strings.Split(layerDigest.String(), ":")[1] + ".tar.gz"
 
-	// If a layer already exists, exit
-	if Exist(filepath.Join(targetDIR, layerFileName)) &&
-		CheckFileDigest(filepath.Join(targetDIR, layerFileName), layerDigest.String()) {
-		return layerFileName, nil
+	// If the layer already exists locally or in another image, reuse it.
+	if reused := reuseExistingLayer(targetDIR, layerFileName, layerDigest.String()); reused != nil {
+		return layerFileName, reused.err
+	}
+
+	// Else we proceed with the download of the layer.
+	if err := writeLayer(filepath.Join(tmpdir, layerFileName), layer); err != nil {
+		return "", err
+	}
+
+	// always verify if the download was correctly done by
+	// checking the digest of the file
+	if !CheckFileDigest(filepath.Join(tmpdir, layerFileName), layerDigest.String()) {
+		return "", fmt.Errorf("error getting layer")
+	}
+
+	err := os.Rename(filepath.Join(tmpdir, layerFileName), filepath.Join(targetDIR, layerFileName))
+
+	return layerFileName, err
+}
+
+// layerReuse signals that an existing layer was reused, carrying any error from
+// the operation (e.g. creating a hardlink).
+type layerReuse struct {
+	err error
+}
+
+// reuseExistingLayer returns a non-nil result if the layer already exists in
+// targetDIR or can be hard-linked from another image directory.
+func reuseExistingLayer(targetDIR, layerFileName, digest string) *layerReuse {
+	target := filepath.Join(targetDIR, layerFileName)
+
+	// If a layer already exists and matches, reuse it as-is.
+	if Exist(target) && CheckFileDigest(target, digest) {
+		return &layerReuse{}
 	}
 
 	// But if a layer with the same name/digest exists in another directory
-	// let's deduplicate the disk usage by using hardlinks
+	// let's deduplicate the disk usage by using hardlinks.
 	matchingLayers := findExistingLayer(filepath.Dir(targetDIR), layerFileName)
-	if len(matchingLayers) > 0 &&
-		CheckFileDigest(matchingLayers[0], layerDigest.String()) {
-		return layerFileName, os.Link(matchingLayers[0], filepath.Join(targetDIR, layerFileName))
+	if len(matchingLayers) > 0 && CheckFileDigest(matchingLayers[0], digest) {
+		return &layerReuse{err: os.Link(matchingLayers[0], target)}
 	}
 
-	// Else we proceed with the download of the layer
-	savedLayer, err := os.Create(filepath.Join(tmpdir, layerFileName))
+	return nil
+}
+
+// writeLayer streams the compressed layer to path.
+func writeLayer(path string, layer v1.Layer) error {
+	//nolint:gosec // path is derived from provider config, not user input
+	savedLayer, err := os.Create(path)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	defer func() { _ = savedLayer.Close() }()
 
 	tarLayer, err := layer.Compressed()
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	_, err = io.Copy(savedLayer, tarLayer)
-	if err != nil {
-		return "", err
-	}
-
-	// always verify if the download was correctly done by
-	// checking the digest of the file
-	if CheckFileDigest(filepath.Join(tmpdir, layerFileName), layerDigest.String()) {
-		err = os.Rename(filepath.Join(tmpdir, layerFileName),
-			filepath.Join(targetDIR, layerFileName))
-
-		return layerFileName, err
-	}
-
-	return "", fmt.Errorf("error getting layer")
+	return err
 }
 
 // findExistingLayer is useful to find layers with matching name/digest in order to

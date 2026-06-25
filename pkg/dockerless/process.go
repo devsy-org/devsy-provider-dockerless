@@ -26,6 +26,7 @@ func GetPid(id string) (int, error) {
 	for _, proc := range processes {
 		cmdline := filepath.Join("/proc", proc.Name(), "cmdline")
 
+		//nolint:gosec // cmdline path is constructed from /proc entries, not user input
 		filedata, err := os.ReadFile(cmdline)
 		if err != nil {
 			continue

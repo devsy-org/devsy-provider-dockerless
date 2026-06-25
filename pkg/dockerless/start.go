@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/loft-sh/devpod/pkg/driver"
+	"github.com/devsy-org/devsy/pkg/driver"
 )
 
 func (p *DockerlessProvider) Start(ctx context.Context, workspaceId string) error {
@@ -25,7 +25,8 @@ func (p *DockerlessProvider) Start(ctx context.Context, workspaceId string) erro
 
 	p.Log.Debugf("retrieving runOptions")
 
-	runOptionsBytes, err := os.ReadFile(statusDIR + "/runOptions")
+	//nolint:gosec // path is derived from provider config, not user input
+	runOptionsBytes, err := os.ReadFile(filepath.Join(statusDIR, "runOptions"))
 	if err != nil {
 		return err
 	}
@@ -37,59 +38,16 @@ func (p *DockerlessProvider) Start(ctx context.Context, workspaceId string) erro
 		return err
 	}
 
-	// fail early for unsupported options
-	if len(runOptions.SecurityOpt) > 0 {
-		p.Log.Warn("unsupported option by the dockerless driver: SecurityOpt")
-	}
+	p.warnUnsupportedOptions(&runOptions)
 
-	if len(runOptions.CapAdd) > 0 {
-		p.Log.Warn("unsupported option by the dockerless driver: CapAdd")
-	}
-
-	command := ""
-	var args []string
-
-	if os.Getuid() > 0 {
-		command = "rootlesskit"
-		args = []string{
-			"--pidns",
-			"--cgroupns",
-			"--utsns",
-			"--ipcns",
-			"--state-dir",
-			filepath.Join("/tmp", "dockerless", workspaceId),
-		}
-
-		// Default to use slip4netns if we have /dev/net/tun access
-		_, err = os.Stat("/dev/net/tun")
-		if err == nil {
-			args = append(args, []string{
-				"--net",
-				"slirp4netns",
-				"--port-driver",
-				"slirp4netns",
-				"--disable-host-loopback",
-				"--copy-up",
-				"/etc",
-			}...)
-		}
-	} else {
-		command = "unshare"
-		args = []string{
-			"-m",
-			"-p",
-			"-u",
-			"-f",
-			"--mount-proc",
-		}
-	}
-
-	args = append(args, []string{
+	command, args := startNamespaceCommand(workspaceId)
+	args = append(args,
 		os.Args[0],
 		"enter",
 		base64.StdEncoding.EncodeToString([]byte(workspaceId)),
-	}...)
+	)
 
+	//nolint:gosec // command/args are built from constants and provider config
 	cmd := exec.Command(command, args...)
 	cmd.Env = os.Environ()
 
@@ -103,4 +61,55 @@ func (p *DockerlessProvider) Start(ctx context.Context, workspaceId string) erro
 	}
 
 	return cmd.Process.Release()
+}
+
+// warnUnsupportedOptions logs warnings for run options the dockerless driver
+// cannot honor.
+func (p *DockerlessProvider) warnUnsupportedOptions(runOptions *driver.RunOptions) {
+	if len(runOptions.SecurityOpt) > 0 {
+		p.Log.Warn("unsupported option by the dockerless driver: SecurityOpt")
+	}
+
+	if len(runOptions.CapAdd) > 0 {
+		p.Log.Warn("unsupported option by the dockerless driver: CapAdd")
+	}
+}
+
+// startNamespaceCommand builds the namespace command used to start (enter) a
+// container. When rootless, it enables slirp4netns networking if /dev/net/tun
+// is available; otherwise it falls back to unshare.
+func startNamespaceCommand(workspaceId string) (string, []string) {
+	if !isRootless() {
+		return commandUnshare, []string{
+			"-m",
+			"-p",
+			"-u",
+			"-f",
+			flagMountProc,
+		}
+	}
+
+	args := []string{
+		flagPidns,
+		flagCgroupns,
+		flagUtsns,
+		flagIpcns,
+		flagStateDir,
+		stateDir(workspaceId),
+	}
+
+	// Default to slirp4netns if we have /dev/net/tun access.
+	if _, err := os.Stat("/dev/net/tun"); err == nil {
+		args = append(args,
+			flagNet,
+			"slirp4netns",
+			"--port-driver",
+			"slirp4netns",
+			"--disable-host-loopback",
+			"--copy-up",
+			"/etc",
+		)
+	}
+
+	return commandRootlesskit, args
 }

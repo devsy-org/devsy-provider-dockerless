@@ -2,18 +2,18 @@ package cmd
 
 import (
 	"context"
-	"fmt"
+	"os"
 	"runtime"
 
-	"github.com/loft-sh/devpod-provider-dockerless/pkg/options"
-	"github.com/loft-sh/log"
+	"github.com/devsy-org/devsy-provider-dockerless/pkg/options"
+	"github.com/devsy-org/log"
 	"github.com/spf13/cobra"
 )
 
-// TargetArchitectureCmd holds the cmd flags
+// TargetArchitectureCmd holds the cmd flags.
 type TargetArchitectureCmd struct{}
 
-// NewTargetArchitectureCmd defines a command
+// NewTargetArchitectureCmd defines a command.
 func NewTargetArchitectureCmd() *cobra.Command {
 	cmd := &TargetArchitectureCmd{}
 	targetArchitectureCmd := &cobra.Command{
@@ -32,8 +32,12 @@ func NewTargetArchitectureCmd() *cobra.Command {
 	return targetArchitectureCmd
 }
 
-// Run runs the command logic
-func (cmd *TargetArchitectureCmd) Run(ctx context.Context, options *options.Options, log log.Logger) error {
-	fmt.Println(runtime.GOARCH)
-	return nil
+// Run runs the command logic.
+func (cmd *TargetArchitectureCmd) Run(
+	ctx context.Context,
+	options *options.Options,
+	log log.Logger,
+) error {
+	_, err := os.Stdout.WriteString(runtime.GOARCH + "\n")
+	return err
 }

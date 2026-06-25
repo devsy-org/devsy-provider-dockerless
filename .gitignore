@@ -1,5 +1,16 @@
-env*
-devpod-provider-dockerless
-release
-rootlesskit*
-work
+/.idea
+/test
+.DS_Store
+/release
+/dist
+provider
+devsy-provider-dockerless
+
+# The rootless helper binaries are downloaded at release time into ./bin.
+# Track the embed targets (empty placeholders keep //go:embed satisfied for
+# dev/lint builds) but ignore the real downloaded binaries.
+/bin/*
+!/bin/rootlesskit-linux-amd64
+!/bin/rootlesskit-linux-arm64
+!/bin/slirp4netns-linux-amd64
+!/bin/slirp4netns-linux-arm64
