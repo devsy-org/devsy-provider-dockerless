@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/devsy-org/devsy-provider-dockerless/compare/v2.0.0...v2.1.0) (2026-06-26)
+
+
+### Miscellaneous Chores
+
+* release 2.1.0 ([#13](https://github.com/devsy-org/devsy-provider-dockerless/issues/13)) ([710ed57](https://github.com/devsy-org/devsy-provider-dockerless/commit/710ed5767d62449dc341ecded18d8659fae3fba5))
+
 ## [2.0.0](https://github.com/devsy-org/devsy-provider-dockerless/compare/v1.1.0...v2.0.0) (2026-06-25)
 
 
