@@ -1,7 +1,5 @@
 # Dockerless Provider for Devsy
 
-[![Open in Devsy!](https://img.shields.io/badge/open_in_devsy-8A2BE2?style=for-the-badge)](https://devsy.sh/open#https://github.com/devsy-org/devsy-provider-dockerless)
-
 Dockerless provider is useful for situations where you don't have Docker or Podman
 installed, you're on Linux, and you still want to use Devcontainers.
 
