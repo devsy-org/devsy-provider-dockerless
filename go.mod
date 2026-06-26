@@ -3,7 +3,7 @@ module github.com/devsy-org/devsy-provider-dockerless
 go 1.25.8
 
 require (
-	github.com/devsy-org/devsy v1.10.0-beta.36.0.20260625223048-32c704a42e7e
+	github.com/devsy-org/devsy v1.0.0
 	github.com/goccy/go-yaml v1.19.2
 	github.com/google/go-containerregistry v0.21.5
 	github.com/spf13/cobra v1.10.2
