@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/devsy-org/devsy/pkg/driver"
+	"github.com/devsy-org/devsy/pkg/log"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -30,15 +31,15 @@ func (p *DockerlessProvider) Pull(ctx context.Context, runOptions *driver.RunOpt
 
 	targetDIR := filepath.Join(p.Config.TargetDir, "images", ref.Name())
 
-	p.Log.Infof("downloading %s", ref.Name())
+	log.Infof("downloading %s", ref.Name())
 	// if we already downloaded the image, exit
 	if _, err := os.Stat(filepath.Join(targetDIR, "manifest.json")); err == nil {
-		p.Log.Infof("image %s already found", ref.Name())
+		log.Infof("image %s already found", ref.Name())
 
 		return nil
 	}
 
-	p.Log.Debugf("getting info about %s", ref.Name())
+	log.Debugf("getting info about %s", ref.Name())
 	// Pull will just get us the v1.Image struct, from
 	// which we get all the information we need
 	imageManifest, err := crane.Pull(image)
@@ -56,7 +57,7 @@ func (p *DockerlessProvider) Pull(ctx context.Context, runOptions *driver.RunOpt
 // downloadLayers downloads every layer of the image into targetDIR and removes
 // any stale files left over from previous downloads.
 func (p *DockerlessProvider) downloadLayers(targetDIR string, imageManifest v1.Image) error {
-	p.Log.Debugf("preparing to get layers")
+	log.Debugf("preparing to get layers")
 	layers, err := imageManifest.Layers()
 	if err != nil {
 		return err
@@ -69,10 +70,10 @@ func (p *DockerlessProvider) downloadLayers(targetDIR string, imageManifest v1.I
 		}
 	}
 
-	p.Log.Infof("downloading layers")
+	log.Infof("downloading layers")
 	keepFiles := []string{}
 	for index, layer := range layers {
-		p.Log.Infof("downloading layer %d of %d", index+1, len(layers))
+		log.Infof("downloading layer %d of %d", index+1, len(layers))
 
 		fileName, err := downloadLayer(targetDIR, layer)
 		if err != nil {
@@ -110,7 +111,7 @@ func (p *DockerlessProvider) saveImageMetadata(
 	targetDIR, image string,
 	imageManifest v1.Image,
 ) error {
-	p.Log.Debugf("saving manifest.json")
+	log.Debugf("saving manifest.json")
 	// we save the manifest.json for later use. This contains
 	// the information on how the layers are ordered and
 	// how to unpack them
@@ -127,7 +128,7 @@ func (p *DockerlessProvider) saveImageMetadata(
 		return err
 	}
 
-	p.Log.Debugf("saving config.json")
+	log.Debugf("saving config.json")
 	// The config.json file is also saved, indicating lots of information
 	// about the image, like default env, entrypoint and so on
 	rawConfig, err := imageManifest.RawConfigFile()
@@ -139,7 +140,7 @@ func (p *DockerlessProvider) saveImageMetadata(
 		return err
 	}
 
-	p.Log.Debugf("saving image info")
+	log.Debugf("saving image info")
 	// We also save the fully qualified name to retrieve it later.
 	return os.WriteFile(filepath.Join(targetDIR, "image_name"), []byte(image), 0o600)
 }

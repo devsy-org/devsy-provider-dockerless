@@ -6,7 +6,6 @@ import (
 	"runtime"
 
 	"github.com/devsy-org/devsy-provider-dockerless/pkg/options"
-	"github.com/devsy-org/log"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +24,7 @@ func NewTargetArchitectureCmd() *cobra.Command {
 				return err
 			}
 
-			return cmd.Run(context.Background(), options, log.Default)
+			return cmd.Run(context.Background(), options)
 		},
 	}
 
@@ -36,7 +35,6 @@ func NewTargetArchitectureCmd() *cobra.Command {
 func (cmd *TargetArchitectureCmd) Run(
 	ctx context.Context,
 	options *options.Options,
-	log log.Logger,
 ) error {
 	_, err := os.Stdout.WriteString(runtime.GOARCH + "\n")
 	return err

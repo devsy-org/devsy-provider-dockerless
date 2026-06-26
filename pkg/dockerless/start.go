@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/devsy-org/devsy/pkg/driver"
+	"github.com/devsy-org/devsy/pkg/log"
 )
 
 func (p *DockerlessProvider) Start(ctx context.Context, workspaceId string) error {
@@ -21,9 +22,9 @@ func (p *DockerlessProvider) Start(ctx context.Context, workspaceId string) erro
 		return nil
 	}
 
-	p.Log.Debugf("container %s is not running, starting", workspaceId)
+	log.Debugf("container %s is not running, starting", workspaceId)
 
-	p.Log.Debugf("retrieving runOptions")
+	log.Debugf("retrieving runOptions")
 
 	//nolint:gosec // path is derived from provider config, not user input
 	runOptionsBytes, err := os.ReadFile(filepath.Join(statusDIR, "runOptions"))
@@ -51,9 +52,9 @@ func (p *DockerlessProvider) Start(ctx context.Context, workspaceId string) erro
 	cmd := exec.Command(command, args...)
 	cmd.Env = os.Environ()
 
-	p.Log.Infof("starting the container")
+	log.Infof("starting the container")
 
-	p.Log.Debugf("executing helper command: %s %s", command, strings.Join(args, " "))
+	log.Debugf("executing helper command: %s %s", command, strings.Join(args, " "))
 
 	err = cmd.Start()
 	if err != nil {
@@ -67,11 +68,11 @@ func (p *DockerlessProvider) Start(ctx context.Context, workspaceId string) erro
 // cannot honor.
 func (p *DockerlessProvider) warnUnsupportedOptions(runOptions *driver.RunOptions) {
 	if len(runOptions.SecurityOpt) > 0 {
-		p.Log.Warn("unsupported option by the dockerless driver: SecurityOpt")
+		log.Warn("unsupported option by the dockerless driver: SecurityOpt")
 	}
 
 	if len(runOptions.CapAdd) > 0 {
-		p.Log.Warn("unsupported option by the dockerless driver: CapAdd")
+		log.Warn("unsupported option by the dockerless driver: CapAdd")
 	}
 }
 

@@ -6,7 +6,6 @@ import (
 
 	"github.com/devsy-org/devsy-provider-dockerless/pkg/dockerless"
 	"github.com/devsy-org/devsy-provider-dockerless/pkg/options"
-	"github.com/devsy-org/log"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +24,7 @@ func NewCommandCmd() *cobra.Command {
 				return err
 			}
 
-			return cmd.Run(context.Background(), options, log.Default)
+			return cmd.Run(context.Background(), options)
 		},
 	}
 
@@ -33,8 +32,8 @@ func NewCommandCmd() *cobra.Command {
 }
 
 // Run runs the command logic.
-func (cmd *CommandCmd) Run(ctx context.Context, options *options.Options, log log.Logger) error {
-	dockerlessProvider, err := dockerless.NewProvider(ctx, options, log)
+func (cmd *CommandCmd) Run(ctx context.Context, options *options.Options) error {
+	dockerlessProvider, err := dockerless.NewProvider(ctx, options)
 	if err != nil {
 		return err
 	}

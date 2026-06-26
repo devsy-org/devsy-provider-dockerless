@@ -11,23 +11,20 @@ import (
 
 	"github.com/devsy-org/devsy-provider-dockerless/pkg/options"
 	"github.com/devsy-org/devsy/pkg/devcontainer/config"
-	"github.com/devsy-org/log"
+	"github.com/devsy-org/devsy/pkg/log"
 )
 
 type DockerlessProvider struct {
 	Config *options.Options
-	Log    log.Logger
 }
 
 func NewProvider(
 	ctx context.Context,
 	options *options.Options,
-	logs log.Logger,
 ) (*DockerlessProvider, error) {
 	// create provider
 	provider := &DockerlessProvider{
 		Config: options,
-		Log:    logs,
 	}
 
 	return provider, nil
@@ -73,14 +70,14 @@ func (p *DockerlessProvider) Find(
 }
 
 func (p *DockerlessProvider) Stop(ctx context.Context, workspaceId string) error {
-	p.Log.Infof("stopping: %s", workspaceId)
+	log.Infof("stopping: %s", workspaceId)
 
 	pid, err := GetPid(workspaceId)
 	if err != nil {
 		return err
 	}
 
-	p.Log.Debugf("found parent process: %d", pid)
+	log.Debugf("found parent process: %d", pid)
 
 	//nolint:gosec // pid is an integer obtained from our own state dir
 	cmd := exec.Command("kill", "-9", strconv.Itoa(pid))
@@ -88,7 +85,7 @@ func (p *DockerlessProvider) Stop(ctx context.Context, workspaceId string) error
 }
 
 func (p *DockerlessProvider) Delete(ctx context.Context, workspaceId string) error {
-	p.Log.Infof("deleting: %s", workspaceId)
+	log.Infof("deleting: %s", workspaceId)
 
 	_ = p.Stop(ctx, workspaceId)
 
