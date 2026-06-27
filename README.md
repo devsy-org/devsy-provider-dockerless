@@ -37,7 +37,7 @@ You only need to specify where you want all of the `dockerless` data to be store
 After the initial setup, just use:
 
 ```sh
-devsy up .
+devsy workspace up .
 ```
 
 ## Run in a container
