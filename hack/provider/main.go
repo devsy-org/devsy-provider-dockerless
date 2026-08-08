@@ -132,7 +132,7 @@ func buildProvider(cfg *buildConfig) Provider {
 	return Provider{
 		Name:        providerName,
 		Version:     cfg.version,
-		Icon:        "https://raw.githubusercontent.com/devsy-org/devsy/main/desktop/src/images/dockerless.svg",
+		Icon:        "https://raw.githubusercontent.com/devsy-org/devsy/main/desktop/src/renderer/public/icons/providers/docker.svg",
 		Home:        "https://github.com/devsy-org/devsy",
 		Description: "Devsy without Docker",
 		Options:     buildOptions(),
