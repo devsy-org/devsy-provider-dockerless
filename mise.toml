@@ -24,6 +24,10 @@ run = "go mod download"
 description = "Install prek git hooks"
 run = "prek install"
 
+[tasks."download:binaries"]
+description = "Download and checksum-verify the embedded rootless helpers"
+run = "go run ./hack/download-binaries"
+
 [tasks."build:cli"]
 description = "Build the cli"
 run = "goreleaser release --snapshot --clean"
