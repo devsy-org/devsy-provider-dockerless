@@ -33,7 +33,7 @@ jobs:
         run: go run ./hack/provider/main.go ${{ fromJSON(steps.goreleaser.outputs.metadata).tag }} > ./dist/provider.yaml
 
       - name: upload provider.yaml
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3
-        with:
-          tag_name: ${{ fromJSON(steps.goreleaser.outputs.metadata).tag }}
-          files: ./dist/provider.yaml
+        run: gh release upload "${TAG}" ./dist/provider.yaml --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ fromJSON(steps.goreleaser.outputs.metadata).tag }}
