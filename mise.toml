@@ -8,7 +8,7 @@ locked = true
 
 [tools]
 go = "1.26.10"
-golangci-lint = "2.11.4"
+golangci-lint = "2.15.0"
 goreleaser = "2.18.3"
 prek = "0.5.6"
 
