@@ -1,6 +1,6 @@
 module github.com/devsy-org/devsy-provider-dockerless
 
-go 1.25.8
+go 1.26.10
 
 require (
 	github.com/devsy-org/devsy v1.0.0
