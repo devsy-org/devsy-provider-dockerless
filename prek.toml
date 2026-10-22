@@ -23,7 +23,7 @@ id = "check-merge-conflict"
 
 [[repos]]
 repo = "https://github.com/alessandrojcm/commitlint-pre-commit-hook"
-rev = "v9.24.0"
+rev = "v9.27.0"
 
 [[repos.hooks]]
 id = "commitlint"
