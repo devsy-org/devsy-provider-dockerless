@@ -40,6 +40,12 @@ After the initial setup, just use:
 devsy workspace up .
 ```
 
+## Provider logging
+
+Provider diagnostics are written to stderr as JSON by default. Set `DEVSY_LOG_LEVEL` to `error`, `warn`, `info`, `debug`, or `trace` to select the minimum level. The standalone default is `info`. Devsy supplies the effective level when it starts the provider.
+
+Set `DEVSY_LOG_FORMAT` to `json`, `text`, `plain`, or `logfmt` to select the diagnostic format. `auto` also selects JSON for the provider. Invalid values stop the command before it runs. Protocol data and command streams remain on their established streams.
+
 ## Run in a container
 
 To run in a container, we need `CAP_SYS_ADMIN` (needed for the unshare, mount and pivot_root syscalls).

@@ -58,10 +58,10 @@ func (p *DockerlessProvider) Find(
 		return nil, err
 	}
 
-	status := "stopped"
+	status := config.ContainerStatus("stopped")
 	if pid, err := GetPid(workspaceId); err == nil && pid > 1 {
 		// file exists, pid is running
-		status = "running"
+		status = config.ContainerStatusRunning
 	}
 
 	containerDetails.State.Status = status
