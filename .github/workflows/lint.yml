@@ -11,8 +11,6 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: jlumbroso/free-disk-space@3f13feab2962a87273d379ebc36ea159527e6cc9 # v1.3.2
-
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: setup Go
@@ -26,9 +24,17 @@ jobs:
           version: v2.12.2
           only-new-issues: true
 
+  megalinter:
+    name: MegaLinter
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: jlumbroso/free-disk-space@3f13feab2962a87273d379ebc36ea159527e6cc9 # v1.3.2
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
       - name: megalinter
         uses: oxsecurity/megalinter@ef3e84b8b836d76db562d0f3ed7da61e8fd538bc # v9
-        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VALIDATE_ALL_CODEBASE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
